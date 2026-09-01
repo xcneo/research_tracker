@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { MapPin, Plus, Pencil, Trash2, Check, X, Clock } from 'lucide-react';
+import { MapPin, Plus, Pencil, Trash2, Check, X, Clock, Search, Loader2 } from 'lucide-react';
 import type { Affiliation, AffiliationInput } from '@/types';
 import { DISCIPLINE_PRESETS } from '@/types';
+import { geocodeLocation } from '@/lib/geocode';
 
 interface ManagePanelProps {
   active: Affiliation[];
@@ -43,12 +44,43 @@ export default function ManagePanel({
   const [tab, setTab] = useState<'active' | 'past'>('active');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
+  const [geoStatus, setGeoStatus] = useState<string | null>(null);
 
   const resetForm = () => {
     setForm(emptyForm);
     setEditingId(null);
     setShowForm(false);
     setError(null);
+    setGeoStatus(null);
+  };
+
+  const handleGeocode = async () => {
+    const query = [form.location_name, form.country].filter(Boolean).join(', ').trim();
+    if (!query) {
+      setGeoStatus('Enter a location name first.');
+      return;
+    }
+    setGeocoding(true);
+    setGeoStatus('Searching…');
+    try {
+      const result = await geocodeLocation(query);
+      if (!result) {
+        setGeoStatus('Could not find this place. Try being more specific.');
+        return;
+      }
+      setForm((prev) => ({
+        ...prev,
+        lat: result.lat,
+        lng: result.lng,
+        country: prev.country || result.country,
+      }));
+      setGeoStatus(`Found: ${result.lat.toFixed(4)}, ${result.lng.toFixed(4)}`);
+    } catch {
+      setGeoStatus('Search failed. Check your connection.');
+    } finally {
+      setGeocoding(false);
+    }
   };
 
   const startEdit = (a: Affiliation) => {
@@ -233,15 +265,30 @@ export default function ManagePanel({
                 </div>
 
                 <Field label="Location name">
-                  <input
-                    type="text"
-                    value={form.location_name}
-                    onChange={(e) =>
-                      setForm({ ...form, location_name: e.target.value })
-                    }
-                    placeholder="e.g. Singapore"
-                    className={inputCls}
-                  />
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={form.location_name}
+                      onChange={(e) =>
+                        setForm({ ...form, location_name: e.target.value })
+                      }
+                      placeholder="e.g. Singapore"
+                      className={inputCls}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleGeocode}
+                      disabled={geocoding}
+                      title="Find coordinates automatically"
+                      className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/20 text-sky-300 transition-colors disabled:opacity-50"
+                    >
+                      {geocoding ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Search className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
                 </Field>
 
                 <Field label="Country">
@@ -253,6 +300,10 @@ export default function ManagePanel({
                     className={inputCls}
                   />
                 </Field>
+
+                {geoStatus && (
+                  <p className="text-[10px] text-sky-400/80 -mt-1">{geoStatus}</p>
+                )}
 
                 <Field label="Lab / University">
                   <input
@@ -326,24 +377,24 @@ export default function ManagePanel({
                     <input
                       type="number"
                       step="0.0001"
-                      value={form.lat}
+                      value={form.lat || ''}
                       onChange={(e) =>
                         setForm({ ...form, lat: parseFloat(e.target.value) || 0 })
                       }
                       className={inputCls}
-                      placeholder="1.3521"
+                      placeholder="auto"
                     />
                   </Field>
                   <Field label="Longitude">
                     <input
                       type="number"
                       step="0.0001"
-                      value={form.lng}
+                      value={form.lng || ''}
                       onChange={(e) =>
                         setForm({ ...form, lng: parseFloat(e.target.value) || 0 })
                       }
                       className={inputCls}
-                      placeholder="103.8198"
+                      placeholder="auto"
                     />
                   </Field>
                 </div>
